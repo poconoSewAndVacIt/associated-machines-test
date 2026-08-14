@@ -18,7 +18,8 @@ app.get("/associations/:id", (req, res) => {
   res.json({ id });
 });
 
-app.get("/test", async (req, res) => {
+app.get("/test/:id", async (req, res) => {
+  const { id } = req.params;
   console.log("test route hit");
   let connection;
 
@@ -27,8 +28,23 @@ app.get("/test", async (req, res) => {
     connection = await pool.getConnection();
 
     // 2. Run a simple query to test (don't just stringify the connection object)
-    const rows = await connection.query("SELECT 1 + 1 AS result");
+    const rows = await connection.query(
+      "SELECT sc.id, sc.pagetitle, tvcv.value FROM site_content sc LEFT JOIN site_tmplvar_contentvalues tvcv ON sc.id = tvcv.contentid AND tvcv.tmplvarid = 13 WHERE sc.id = ?",
+      [id],
+    );
+
+    // 8885 sample id
     res.json(rows);
+    // [
+    //   {
+    //     id: 8885,
+    //     pagetitle: "Simplicity Flash Multi-Use Handheld Vacuum",
+    //     value:
+    //       "Associated Machines==%SIM->F1.6;%||Associated Machines==%GROUP-All-Vacuums;%",
+    //   },
+    // ];
+
+    // now have to split and parse the value
   } catch (error) {
     console.error("Database error details:", error);
     res
