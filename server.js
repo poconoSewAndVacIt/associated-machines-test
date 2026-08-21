@@ -21,11 +21,7 @@ BigInt.prototype.toJSON = function () {
 // Serve your frontend HTML/CSS files from a folder named "public"
 app.use(express.static(path.join(__dirname, "public")));
 
-app.get("/api/data", (req, res) => {
-  res.json({ message: "Hello from the backend!" });
-});
-
-app.get("/product/:id", async (req, res) => {
+app.get("/products", async (req, res) => {
   let connection;
   try {
     connection = await pool.getConnection();
@@ -33,50 +29,10 @@ app.get("/product/:id", async (req, res) => {
     const data = await connection.query(
       `
     SELECT 
-        sc.id, sc.pagetitle, tv13.value as TV13_VALUE
-        
-    FROM 
-        site_content as sc
-
-    LEFT JOIN
-        site_tmplvar_contentvalues as tv13
-    ON
-        tv13.tmplvarid = 13
-    AND
-        sc.id =  tv13.contentid
-    
-    WHERE
-        sc.parent = 11
-    AND
-        sc.deleted = 0
-
-    LIMIT 100
-    `,
-    );
-
-    res.json(data);
-  } catch (error) {
-    console.error("Database error details:", error);
-    res
-      .status(500)
-      .json({ error: "Database connection failed", details: error.message });
-  } finally {
-    // 3. ALWAYS release the connection back to the pool, even if it fails
-    if (connection) connection.release();
-  }
-});
-
-// Make this one only get machines
-app.get("/machine/:machineId", async (req, res) => {
-  const { machineId: id } = req.params;
-  let connection;
-  try {
-    connection = await pool.getConnection();
-
-    const machineData = await connection.query(
-      `
-    SELECT 
-        sc.id, sc.pagetitle, 
+        sc.id, 
+        sc.pagetitle, 
+        sc.uri,
+        sc.parent,
         tv13.value as TV13_VALUE,
         tv8.value as TV8_VALUE
         
@@ -89,30 +45,24 @@ app.get("/machine/:machineId", async (req, res) => {
         tv13.tmplvarid = 13
     AND
         sc.id =  tv13.contentid
-    
+
+        
     LEFT JOIN
         site_tmplvar_contentvalues as tv8
     ON
         tv8.tmplvarid = 8
     AND
         sc.id =  tv8.contentid
+
     
     WHERE
-    # parent is not correct for some reason, maybe nested?
-    #    sc.parent = 11
-    # AND
         sc.deleted = 0
-    AND 
-        sc.id = ?
 
-    LIMIT 100
+    LIMIT 1000
     `,
-      [id],
     );
 
-    let associations = machineData.TV13_VALUE;
-
-    res.json(machineData);
+    res.json({ count: data.length, data });
   } catch (error) {
     console.error("Database error details:", error);
     res
@@ -124,7 +74,6 @@ app.get("/machine/:machineId", async (req, res) => {
   }
 });
 
-// @#@#@# get all snippets and save them
 app.get("/snippets", async (req, res) => {
   return res.send(
     "this endpoint has been turned off. comment out this line to turn back on",
@@ -196,54 +145,7 @@ app.get("/part/:partId", async (req, res) => {
   }
 });
 
-app.get("/allMachines", async (req, res) => {
-  let connection;
-  try {
-    connection = await pool.getConnection();
-
-    const data = await connection.query(
-      `
-    SELECT 
-        sc.id, sc.pagetitle, tv13.value as TV13_VALUE, tv8.value as TV8_VALUE
-        
-    FROM 
-        site_content as sc
-
-    LEFT JOIN
-        site_tmplvar_contentvalues as tv13
-    ON
-        tv13.tmplvarid = 13
-
-    AND
-        sc.id =  tv13.contentid
-
-    LEFT JOIN
-        site_tmplvar_contentvalues as tv8
-    ON
-        tv8.tmplvarid = 8
-    and
-        sc.id = tv8.contentid
-    
-    WHERE
-        sc.parent = 11
-
-    LIMIT 100
-    `,
-    );
-
-    res.json(data);
-  } catch (error) {
-    console.error("Database error details:", error);
-    res
-      .status(500)
-      .json({ error: "Database connection failed", details: error.message });
-  } finally {
-    // 3. ALWAYS release the connection back to the pool, even if it fails
-    if (connection) connection.release();
-  }
-});
-
-app.get("/test/:id", async (req, res) => {
+app.get("/product/:id", async (req, res) => {
   const { id } = req.params;
   console.log("test route hit", id);
   let connection;
@@ -251,7 +153,7 @@ app.get("/test/:id", async (req, res) => {
   try {
     connection = await pool.getConnection();
 
-    const rows = await searchForItemsById(id, connection);
+    const rows = await searchForItemById(id, connection);
     let matchingParts = null;
 
     const item = rows[0];
@@ -367,9 +269,7 @@ function printAllRoutes() {
   }
 }
 
-async function searchForItemsById(id, connection) {
-  return await connection.query(
-    `
+const SEARCH_FOR_ITEMS_QUERY = `
     SELECT 
         sc.id, 
         sc.pagetitle, 
@@ -402,9 +302,15 @@ async function searchForItemsById(id, connection) {
 
     WHERE 
         sc.id = ?
-    `,
-    [id],
-  );
+    `;
+
+const SEARCH_FOR_ITEM_QUERY = SEARCH_FOR_ITEMS_QUERY + ` LIMIT 1`;
+
+async function searchForItemsById(id, connection) {
+  return await connection.query(SEARCH_FOR_ITEMS_QUERY, [id]);
+}
+async function searchForItemById(id, connection) {
+  return await connection.query(SEARCH_FOR_ITEM_QUERY, [id]);
 }
 
 async function findPartsByTagOrGroup(tagGroup, connection) {
@@ -418,6 +324,7 @@ async function findPartsByTagOrGroup(tagGroup, connection) {
     SELECT
     sc.id,
     sc.pagetitle,
+    sc.uri,
     tvcv8.value AS associated_tags_groups
 
     FROM
@@ -443,6 +350,7 @@ async function findMachinesByTagOrGroup(tagGroup, connection) {
     SELECT
     sc.id,
     sc.pagetitle,
+    sc.uri,
     tvcv13.value AS associated_machine_tags_groups
 
     FROM
