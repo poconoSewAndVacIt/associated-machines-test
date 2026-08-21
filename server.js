@@ -299,6 +299,7 @@ app.get("/test/:id", async (req, res) => {
     // );
 
     const rows = await searchForItemsById(id, connection);
+    let matchingParts = null;
 
     const item = rows[0];
     const isMachine = item.machine_tags_groups !== null;
@@ -315,19 +316,15 @@ app.get("/test/:id", async (req, res) => {
         .filter((item) => item.length);
       console.log(tagsAndGroups);
 
-      const matchingParts = await findPartsByTagOrGroup(
-        tagsAndGroups,
-        connection,
-      );
+      matchingParts = await findPartsByTagOrGroup(tagsAndGroups, connection);
 
       console.log("matching parts");
       console.log(matchingParts.length);
-      //   console.log(matchingParts[0]);
     } else if (isPart) {
       // search for machines that match
     }
 
-    res.json(rows);
+    res.json({ item, matchingParts });
 
     // 8885 sample id
     // [
@@ -435,40 +432,44 @@ async function searchForItemsById(id, connection) {
 }
 
 async function findPartsByTagOrGroup(tagGroup, connection) {
-  const dbQueryPlaceholders = tagGroup.map(() => "?").join(", ");
-  console.log(tagGroup.length, dbQueryPlaceholders.replaceAll(", ", "").length);
-  console.log(tagGroup, dbQueryPlaceholders);
+  // const dbQueryPlaceholders = tagGroup.map(() => "?").join(", ");
+  // console.log(tagGroup.length, dbQueryPlaceholders.replaceAll(", ", "").length);
+  // console.log(tagGroup, dbQueryPlaceholders);
 
   //   makes a bunch of x.value LIKE ? OR ...
   // this maps against the tagGroup array
   const whereClause = tagGroup.map(() => `tvcv8.value LIKE ?`).join(" OR ");
+  console.log(whereClause);
+  console.log(tagGroup);
+  // return [];
 
-  return await connection.query(
-    `
-      SELECT
-          sc.id,
-          sc.pagetitle,
-          tvcv13.value AS machine_tags_groups,
-          tvcv8.value AS associated_tags_groups
-      FROM
-          site_content sc
+  const tagsWithWildcards = tagGroup.map((item) => `%${item}%`);
 
-      LEFT JOIN
-          site_tmplvar_contentvalues tvcv13
-      ON
-          tvcv13.tmplvarid = 13
-      AND
-          sc.id = tvcv13.contentid
+  const fullQuery = `
+  SELECT
+  sc.id,
+  sc.pagetitle,
+  tvcv13.value AS machine_tags_groups,
+  tvcv8.value AS associated_tags_groups
+  FROM
+  site_content sc
+  
+  LEFT JOIN
+  site_tmplvar_contentvalues tvcv13
+  ON
+  tvcv13.tmplvarid = 13
+  AND
+  sc.id = tvcv13.contentid
+  
+  LEFT JOIN
+  site_tmplvar_contentvalues tvcv8
+  ON
+  tvcv8.tmplvarid = 8
+  AND
+  sc.id = tvcv8.contentid
+  
+  WHERE ${whereClause}  
+  `;
 
-      LEFT JOIN
-          site_tmplvar_contentvalues tvcv8
-      ON
-          tvcv8.tmplvarid = 8
-      AND
-          sc.id = tvcv8.contentid
-
-      WHERE ${whereClause}  
-      `,
-    [tagGroup],
-  );
+  return await connection.query(fullQuery, tagsWithWildcards);
 }
