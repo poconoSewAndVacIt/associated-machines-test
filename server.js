@@ -259,7 +259,7 @@ app.get("/test/:id", async (req, res) => {
     const isPart = item.associated_tags_groups !== null;
 
     if (isMachine) {
-      // search for items that match
+      // Find matching parts
       const tagsAndGroups = item.machine_tags_groups
         .replaceAll(/\\r|\\n/g, "")
         .replaceAll("Associated Machines", "")
@@ -267,12 +267,8 @@ app.get("/test/:id", async (req, res) => {
         .split(";")
         .map((item) => item.trim())
         .filter((item) => item.length);
-      console.log(tagsAndGroups);
 
       matchingParts = await findPartsByTagOrGroup(tagsAndGroups, connection);
-
-      console.log("matching parts");
-      console.log(matchingParts.length);
 
       matchingParts = matchingParts.map((part) => {
         const matchesOn = tagsAndGroups.filter((tag) =>
@@ -280,11 +276,31 @@ app.get("/test/:id", async (req, res) => {
         );
         return { ...part, matchesOn };
       });
+      res.json({ item, matchingParts });
     } else if (isPart) {
-      // search for machines that match
-    }
+      // Find matching matchines
+      const tagsAndGroups = item.associated_tags_groups
+        .replaceAll(/\\r|\\n/g, "")
+        .split(";")
+        .map((item) => item.trim())
+        .filter((item) => item.length);
+      console.log(tagsAndGroups);
 
-    res.json({ item, matchingParts });
+      matchingMachines = await findMachinesByTagOrGroup(
+        tagsAndGroups,
+        connection,
+      );
+
+      console.log(matchingMachines.length);
+
+      matchingMachines = matchingMachines.map((machine) => {
+        const matchesOn = tagsAndGroups.filter((tag) =>
+          machine.associated_machine_tags_groups.includes(tag),
+        );
+        return { ...machine, matchesOn };
+      });
+      res.json({ item, matchingMachines });
+    }
 
     // 8885 sample id
     // [
@@ -392,43 +408,54 @@ async function searchForItemsById(id, connection) {
 }
 
 async function findPartsByTagOrGroup(tagGroup, connection) {
-  // const dbQueryPlaceholders = tagGroup.map(() => "?").join(", ");
-  // console.log(tagGroup.length, dbQueryPlaceholders.replaceAll(", ", "").length);
-  // console.log(tagGroup, dbQueryPlaceholders);
-
   //   makes a bunch of x.value LIKE ? OR ...
   // this maps against the tagGroup array
   const whereClause = tagGroup.map(() => `tvcv8.value LIKE ?`).join(" OR ");
-  console.log(whereClause);
-  console.log(tagGroup);
-  // return [];
 
   const tagsWithWildcards = tagGroup.map((item) => `%${item}%`);
 
   const fullQuery = `
-  SELECT
-  sc.id,
-  sc.pagetitle,
-  tvcv13.value AS machine_tags_groups,
-  tvcv8.value AS associated_tags_groups
-  FROM
-  site_content sc
-  
-  LEFT JOIN
-  site_tmplvar_contentvalues tvcv13
-  ON
-  tvcv13.tmplvarid = 13
-  AND
-  sc.id = tvcv13.contentid
-  
-  LEFT JOIN
-  site_tmplvar_contentvalues tvcv8
-  ON
-  tvcv8.tmplvarid = 8
-  AND
-  sc.id = tvcv8.contentid
-  
-  WHERE ${whereClause}  
+    SELECT
+    sc.id,
+    sc.pagetitle,
+    tvcv8.value AS associated_tags_groups
+
+    FROM
+    site_content sc
+    
+    LEFT JOIN
+    site_tmplvar_contentvalues tvcv8
+    ON
+    tvcv8.tmplvarid = 8
+    AND
+    sc.id = tvcv8.contentid
+    
+    WHERE ${whereClause}  
+  `;
+
+  return await connection.query(fullQuery, tagsWithWildcards);
+}
+
+async function findMachinesByTagOrGroup(tagGroup, connection) {
+  const whereClause = tagGroup.map(() => `tvcv13.value LIKE ?`).join(" OR ");
+  const tagsWithWildcards = tagGroup.map((item) => `%${item}%`);
+  const fullQuery = `
+    SELECT
+    sc.id,
+    sc.pagetitle,
+    tvcv13.value AS associated_machine_tags_groups
+
+    FROM
+    site_content sc
+    
+    LEFT JOIN
+    site_tmplvar_contentvalues tvcv13
+    ON
+    tvcv13.tmplvarid = 13
+    AND
+    sc.id = tvcv13.contentid
+    
+    WHERE ${whereClause}  
   `;
 
   return await connection.query(fullQuery, tagsWithWildcards);
