@@ -7,6 +7,7 @@ const PORT = 3000;
 const pool = require("./dbConnection");
 const jsonHelper = require("./jsonHelper");
 const fs = require("fs");
+const { match } = require("assert");
 
 // Fix Big Int Bug
 BigInt.prototype.toJSON = function () {
@@ -248,55 +249,7 @@ app.get("/test/:id", async (req, res) => {
   let connection;
 
   try {
-    // 1. Get connection from pool
     connection = await pool.getConnection();
-
-    // const justItem = await connection.query(
-    //   `SELECT * FROM site_content WHERE id = ?`,
-    //   [id],
-    // );
-
-    // console.log(justItem);
-
-    // 2. Run a simple query to test (don't just stringify the connection object)
-    // Also tvcv10 would have "verifyfit", but that might not be important if either 8/13 has a property.
-    // const rows = await connection.query(
-    //   `
-    // SELECT
-    //     sc.id,
-    //     sc.pagetitle,
-    //     tvcv10.value AS product_setting_value,
-    //     tvcv13.value AS machine_tags_groups,
-    //     tvcv8.value AS associated_tags_groups
-    // FROM
-    //     site_content sc
-
-    // LEFT JOIN
-    //     site_tmplvar_contentvalues tvcv13
-    // ON
-    //     tvcv13.tmplvarid = 13
-    // AND
-    //     sc.id = tvcv13.contentid
-
-    // LEFT JOIN
-    //     site_tmplvar_contentvalues tvcv10
-    // ON
-    //     tvcv10.tmplvarid = 10
-    // AND
-    //     sc.id = tvcv10.contentid
-
-    // LEFT JOIN
-    //     site_tmplvar_contentvalues tvcv8
-    // ON
-    //     tvcv8.tmplvarid = 8
-    // AND
-    //     sc.id = tvcv8.contentid
-
-    // WHERE
-    //     sc.id = ?
-    // `,
-    //   [id],
-    // );
 
     const rows = await searchForItemsById(id, connection);
     let matchingParts = null;
@@ -320,6 +273,13 @@ app.get("/test/:id", async (req, res) => {
 
       console.log("matching parts");
       console.log(matchingParts.length);
+
+      matchingParts = matchingParts.map((part) => {
+        const matchesOn = tagsAndGroups.filter((tag) =>
+          part.associated_tags_groups.includes(tag),
+        );
+        return { ...part, matchesOn };
+      });
     } else if (isPart) {
       // search for machines that match
     }
