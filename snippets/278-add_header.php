@@ -1,0 +1,1 @@
+header("X-Robots-Tag: noindex, follow", true);

@@ -1,0 +1,1 @@
+echo $modx->getOption('commerce.themes_path');
