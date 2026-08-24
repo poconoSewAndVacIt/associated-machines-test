@@ -9,6 +9,22 @@ const jsonHelper = require("./jsonHelper");
 const fs = require("fs");
 const { match } = require("assert");
 
+const {
+  PRODUCT_COUNT_QUERY,
+  MACHINE_COUNT_QUERY,
+  PART_COUNT_QUERY,
+  ALL_PRODUCTS_QUERY,
+} = require("./queries.js");
+
+const {
+  findMachinesByTagOrGroup,
+  findPartsByTagOrGroup,
+  printAllRoutes,
+  searchForItemsById,
+  searchForItemById,
+  makeAllProductsQueryWithLimit,
+} = require("./queryFunctions.js");
+
 // Fix Big Int Bug
 BigInt.prototype.toJSON = function () {
   // Option A: Convert to a string (Safest for massive numbers)
@@ -21,48 +37,51 @@ BigInt.prototype.toJSON = function () {
 // Serve your frontend HTML/CSS files from a folder named "public"
 app.use(express.static(path.join(__dirname, "public")));
 
+app.get("/exampleProducts", async (req, res) => {
+  res.json({
+    machineExamples: [9, 18, 23, 24, 27],
+    partExamples: [5253, 31, 34, 35, 38, 39],
+  });
+});
+
+app.get("/productCount", async (req, res) => {
+  connection = await pool.getConnection();
+
+  Promise.all([
+    connection.query(PRODUCT_COUNT_QUERY),
+    connection.query(MACHINE_COUNT_QUERY),
+    connection.query(PART_COUNT_QUERY),
+  ])
+    // destructure the array response
+    .then(([product_count, machine_count, part_count]) =>
+      res.json({
+        product_count,
+        machine_count,
+        part_count,
+      }),
+    )
+    .catch((error) => {
+      console.log(error);
+      res
+        .status(500)
+        .json({ status: "Error", code: 500, message: error.message });
+    });
+});
+
 app.get("/products", async (req, res) => {
+  let { limit } = req.query;
+
   let connection;
   try {
     connection = await pool.getConnection();
+    const query = makeAllProductsQueryWithLimit(limit);
+    const data = await connection.query(query);
 
-    const data = await connection.query(
-      `
-    SELECT 
-        sc.id, 
-        sc.pagetitle, 
-        sc.uri,
-        sc.parent,
-        tv13.value as TV13_VALUE,
-        tv8.value as TV8_VALUE
-        
-    FROM 
-        site_content as sc
-
-    LEFT JOIN
-        site_tmplvar_contentvalues as tv13
-    ON
-        tv13.tmplvarid = 13
-    AND
-        sc.id =  tv13.contentid
-
-        
-    LEFT JOIN
-        site_tmplvar_contentvalues as tv8
-    ON
-        tv8.tmplvarid = 8
-    AND
-        sc.id =  tv8.contentid
-
-    
-    WHERE
-        sc.deleted = 0
-
-    LIMIT 1000
-    `,
-    );
-
-    res.json({ count: data.length, data });
+    res.json({
+      count: data.length,
+      note: "You can add ?limit=X to the end of the url to change the number of items queried. (i.e. /products?limit=100",
+      data,
+    });
   } catch (error) {
     console.error("Database error details:", error);
     res
@@ -74,39 +93,71 @@ app.get("/products", async (req, res) => {
   }
 });
 
-app.get("/snippets", async (req, res) => {
-  return res.send(
-    "this endpoint has been turned off. comment out this line to turn back on",
-  );
+app.get("/allProducts", async (req, res) => {
+  const limit = 100000;
+
   let connection;
   try {
     connection = await pool.getConnection();
-    const data = await connection.query(`
-            SELECT id, name, snippet FROM site_snippets;
-            
-            `);
-    for (let d of data) {
-      let fileName = `./snippets/${d.id}-${d.name}.php`;
-      try {
-        fs.writeFileSync(fileName, d.snippet, "utf8");
-      } catch (error) {
-        console.log(error);
-        res.status(500).json({ error: "Error saving", details: error.message });
-      }
-    }
-    res.json(data);
+    const query = makeAllProductsQueryWithLimit(limit);
+    const data = await connection.query(query);
+
+    res.json({
+      count: data.length,
+      note: "You can add ?limit=X to the end of the url to change the number of items queried. (i.e. /products?limit=100",
+      data,
+    });
   } catch (error) {
-    console.error("Database Snippet Error details:", error);
+    console.error("Database error details:", error);
     res
       .status(500)
       .json({ error: "Database connection failed", details: error.message });
   } finally {
+    // 3. ALWAYS release the connection back to the pool, even if it fails
     if (connection) connection.release();
   }
 });
 
-// Make this one only get parts
-app.get("/part/:partId", async (req, res) => {
+// @#@#@# this code can probably be deleted, it was used to make a local copy of modx's custom snippet code for easy review
+// app.get("/snippets", async (req, res) => {
+//   return res.send(
+//     "this endpoint has been turned off. comment out this line to turn back on",
+//   );
+//   let connection;
+//   try {
+//     connection = await pool.getConnection();
+//     const data = await connection.query(`
+//             SELECT id, name, snippet FROM site_snippets;
+
+//             `);
+//     for (let d of data) {
+//       let fileName = `./snippets/${d.id}-${d.name}.php`;
+//       try {
+//         fs.writeFileSync(fileName, d.snippet, "utf8");
+//       } catch (error) {
+//         console.log(error);
+//         res.status(500).json({ error: "Error saving", details: error.message });
+//       }
+//     }
+//     res.json(data);
+//   } catch (error) {
+//     console.error("Database Snippet Error details:", error);
+//     res
+//       .status(500)
+//       .json({ error: "Database connection failed", details: error.message });
+//   } finally {
+//     if (connection) connection.release();
+//   }
+// });
+
+// Make this one only get parts by id
+app.get("/part{/:partId}", async (req, res) => {
+  const { partId } = req.params;
+
+  // Guard against incorrect url's
+  if (!(partId >= 0))
+    return res.json({ error: "needs a partId", example: "/part/31" });
+
   let connection;
   try {
     connection = await pool.getConnection();
@@ -114,7 +165,9 @@ app.get("/part/:partId", async (req, res) => {
     const data = await connection.query(
       `
     SELECT 
-        sc.id, sc.pagetitle, tv8.value as TV8_VALUE
+        sc.id,
+        sc.pagetitle, sc.longtitle, sc.description, sc.alias, sc.introtext, sc.content, sc.createdon, sc.editedon, sc.deleted, sc.publishedon, sc.published, sc.uri, sc.properties,
+        tv8.value as TV8_VALUE
         
     FROM 
         site_content as sc
@@ -127,10 +180,11 @@ app.get("/part/:partId", async (req, res) => {
         sc.id = tv8.contentid
     
     WHERE
-        sc.parent = 11
+        sc.id = ?
 
-    LIMIT 100
+    LIMIT 1
     `,
+      [partId],
     );
 
     res.json(data);
@@ -145,9 +199,68 @@ app.get("/part/:partId", async (req, res) => {
   }
 });
 
-app.get("/product/:id", async (req, res) => {
+// Make this one only get a machine by id
+app.get("/machine{/:machineId}", async (req, res) => {
+  const { machineId } = req.params;
+
+  // Guard against incorrect url's
+  if (!(machineId >= 0))
+    return res.json({ error: "needs a machineId", example: "/machine/9" });
+
+  let connection;
+  try {
+    connection = await pool.getConnection();
+
+    const data = await connection.query(
+      `
+    SELECT 
+        sc.id,
+        sc.pagetitle, sc.longtitle, sc.description, sc.alias, sc.introtext, sc.content, sc.createdon, sc.editedon, sc.deleted, sc.publishedon, sc.published, sc.uri, sc.properties,
+        tv13.value as TV13_VALUE
+        
+    FROM 
+        site_content as sc
+
+    LEFT JOIN
+        site_tmplvar_contentvalues as tv13
+    ON
+        tv13.tmplvarid = 13
+    and
+        sc.id = tv13.contentid
+    
+    WHERE
+        sc.id = ?
+
+    LIMIT 1
+    `,
+      [machineId],
+    );
+
+    res.json(data);
+  } catch (error) {
+    console.error("Database error details:", error);
+    res
+      .status(500)
+      .json({ error: "Database connection failed", details: error.message });
+  } finally {
+    // 3. ALWAYS release the connection back to the pool, even if it fails
+    if (connection) connection.release();
+  }
+});
+
+// This route is more generic in that it can grab any product plus associated parts/machines
+app.get("/product{/:id}", async (req, res) => {
   const { id } = req.params;
+
+  // Guard against incorrect url's
+  if (!(id >= 0))
+    return res.json({
+      error: "needs a product id",
+      example: "/product/18",
+      example2: "/product/31",
+    });
   console.log("test route hit", id);
+
   let connection;
 
   try {
@@ -204,29 +317,6 @@ app.get("/product/:id", async (req, res) => {
       res.json({ item, matchingMachines });
     }
 
-    // 8885 sample id
-    // [
-    //   {
-    //     id: 8885,
-    //     pagetitle: "Simplicity Flash Multi-Use Handheld Vacuum",
-    //     machine_tags_groups:
-    //       "Associated Machines==%SIM->F1.6;%||Associated Machines==%GROUP-All-Vacuums;%",
-    //     associated_tags_groups: null,
-    //   },
-    // ];
-
-    // OR
-
-    // [
-    //   {
-    //     id: 8913,
-    //     pagetitle: "Mettler-Metrosene 100% Polyester 8 Thread Gift Pack",
-    //     machine_tags_groups: null,
-    //     associated_tags_groups:
-    //       "GROUP-Thread-Sewing; GROUP-Thread-Quilting;",
-    //   },
-    // ];
-
     // now have to split and parse the value
   } catch (error) {
     console.error("Database error details:", error);
@@ -240,131 +330,6 @@ app.get("/product/:id", async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  printAllRoutes();
+  printAllRoutes(app);
   console.log(`Express server running on http://localhost:${PORT}`);
 });
-
-function printAllRoutes() {
-  console.log("All Routes:");
-  for (let d of app.router.stack) {
-    if (d.route) {
-      // Routes registered directly on the app (e.g., app.get('/users'))
-      const methods = Object.keys(d.route.methods).join(", ").toUpperCase();
-      console.log(`[${methods}] ${d.route.path}`);
-    } else if (d.name === "router") {
-      // Routes registered via express.Router()
-      d.handle.stack.forEach((handler) => {
-        if (handler.route) {
-          const methods = Object.keys(handler.route.methods)
-            .join(", ")
-            .toUpperCase();
-          // Combines the router base path with the route path
-          const basePath = d.regexp.source
-            .replace(/\\\//g, "/")
-            .replace(/\?\:\(\?\=\\\/\|\$\)/g, "");
-          console.log(`[${methods}] ${basePath}${handler.route.path}`);
-        }
-      });
-    }
-  }
-}
-
-const SEARCH_FOR_ITEMS_QUERY = `
-    SELECT 
-        sc.id, 
-        sc.pagetitle, 
-        tvcv10.value AS product_setting_value,
-        tvcv13.value AS machine_tags_groups,
-        tvcv8.value AS associated_tags_groups
-    FROM 
-        site_content sc 
-    
-    LEFT JOIN 
-        site_tmplvar_contentvalues tvcv13 
-    ON 
-        tvcv13.tmplvarid = 13 
-    AND 
-        sc.id = tvcv13.contentid 
-    
-    LEFT JOIN
-        site_tmplvar_contentvalues tvcv10
-    ON
-        tvcv10.tmplvarid = 10
-    AND
-        sc.id = tvcv10.contentid
-
-    LEFT JOIN
-        site_tmplvar_contentvalues tvcv8
-    ON
-        tvcv8.tmplvarid = 8
-    AND
-        sc.id = tvcv8.contentid
-
-    WHERE 
-        sc.id = ?
-    `;
-
-const SEARCH_FOR_ITEM_QUERY = SEARCH_FOR_ITEMS_QUERY + ` LIMIT 1`;
-
-async function searchForItemsById(id, connection) {
-  return await connection.query(SEARCH_FOR_ITEMS_QUERY, [id]);
-}
-async function searchForItemById(id, connection) {
-  return await connection.query(SEARCH_FOR_ITEM_QUERY, [id]);
-}
-
-async function findPartsByTagOrGroup(tagGroup, connection) {
-  //   makes a bunch of x.value LIKE ? OR ...
-  // this maps against the tagGroup array
-  const whereClause = tagGroup.map(() => `tvcv8.value LIKE ?`).join(" OR ");
-
-  const tagsWithWildcards = tagGroup.map((item) => `%${item}%`);
-
-  const fullQuery = `
-    SELECT
-    sc.id,
-    sc.pagetitle,
-    sc.uri,
-    tvcv8.value AS associated_tags_groups
-
-    FROM
-    site_content sc
-    
-    LEFT JOIN
-    site_tmplvar_contentvalues tvcv8
-    ON
-    tvcv8.tmplvarid = 8
-    AND
-    sc.id = tvcv8.contentid
-    
-    WHERE ${whereClause}  
-  `;
-
-  return await connection.query(fullQuery, tagsWithWildcards);
-}
-
-async function findMachinesByTagOrGroup(tagGroup, connection) {
-  const whereClause = tagGroup.map(() => `tvcv13.value LIKE ?`).join(" OR ");
-  const tagsWithWildcards = tagGroup.map((item) => `%${item}%`);
-  const fullQuery = `
-    SELECT
-    sc.id,
-    sc.pagetitle,
-    sc.uri,
-    tvcv13.value AS associated_machine_tags_groups
-
-    FROM
-    site_content sc
-    
-    LEFT JOIN
-    site_tmplvar_contentvalues tvcv13
-    ON
-    tvcv13.tmplvarid = 13
-    AND
-    sc.id = tvcv13.contentid
-    
-    WHERE ${whereClause}  
-  `;
-
-  return await connection.query(fullQuery, tagsWithWildcards);
-}
