@@ -13,7 +13,6 @@ const {
   PRODUCT_COUNT_QUERY,
   MACHINE_COUNT_QUERY,
   PART_COUNT_QUERY,
-  ALL_PRODUCTS_QUERY,
 } = require("./queries.js");
 
 const {
@@ -24,6 +23,11 @@ const {
   searchForItemById,
   makeAllProductsQueryWithLimit,
 } = require("./queryFunctions.js");
+
+const {
+  parseMachineTagsGroups,
+  parsePartAssociatedTagsGroups,
+} = require("./helpers.js");
 
 // Fix Big Int Bug
 BigInt.prototype.toJSON = function () {
@@ -45,9 +49,9 @@ app.get("/exampleProducts", async (req, res) => {
 });
 
 app.get("/productCount", async (req, res) => {
-  connection = await pool.getConnection();
+  const connection = await pool.getConnection();
 
-  Promise.all([
+  await Promise.all([
     connection.query(PRODUCT_COUNT_QUERY),
     connection.query(MACHINE_COUNT_QUERY),
     connection.query(PART_COUNT_QUERY),
@@ -66,6 +70,7 @@ app.get("/productCount", async (req, res) => {
         .status(500)
         .json({ status: "Error", code: 500, message: error.message });
     });
+  if (connection) connection.release();
 });
 
 app.get("/products", async (req, res) => {
@@ -156,7 +161,7 @@ app.get("/part{/:partId}", async (req, res) => {
 
   // Guard against incorrect url's
   if (!(partId >= 0))
-    return res.json({ error: "needs a partId", example: "/part/31" });
+    return res.json({ error: "needs a partId", example: "/part/26" });
 
   let connection;
   try {
@@ -257,7 +262,7 @@ app.get("/product{/:id}", async (req, res) => {
     return res.json({
       error: "needs a product id",
       example: "/product/18",
-      example2: "/product/31",
+      example2: "/product/26",
     });
   console.log("test route hit", id);
 
@@ -275,13 +280,7 @@ app.get("/product{/:id}", async (req, res) => {
 
     if (isMachine) {
       // Find matching parts
-      const tagsAndGroups = item.machine_tags_groups
-        .replaceAll(/\\r|\\n/g, "")
-        .replaceAll("Associated Machines", "")
-        .replaceAll(/[%\|=]/g, "")
-        .split(";")
-        .map((item) => item.trim())
-        .filter((item) => item.length);
+      const tagsAndGroups = parseMachineTagsGroups(item.machine_tags_groups);
 
       matchingParts = await findPartsByTagOrGroup(tagsAndGroups, connection);
 
@@ -294,12 +293,9 @@ app.get("/product{/:id}", async (req, res) => {
       res.json({ item, matchingParts });
     } else if (isPart) {
       // Find matching matchines
-      const tagsAndGroups = item.associated_tags_groups
-        .replaceAll(/\\r|\\n/g, "")
-        .split(";")
-        .map((item) => item.trim())
-        .filter((item) => item.length);
-      console.log(tagsAndGroups);
+      const tagsAndGroups = parsePartAssociatedTagsGroups(
+        item.associated_tags_groups,
+      );
 
       matchingMachines = await findMachinesByTagOrGroup(
         tagsAndGroups,
