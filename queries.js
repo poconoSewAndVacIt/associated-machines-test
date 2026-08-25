@@ -1,3 +1,8 @@
+// TV8 is the field in modx DB than stores machine tags
+// TV13 is the field in modx DB that stores part tags
+// TV10 is the field in modx DB that stores product settings, like "discontinued" or "verifyfit" or both
+// These are "Template Variables", basically free-floating data that associates itself with a type of data (the TV field, 8, 10, 13), and a document ID (for a product or page).
+
 const PRODUCT_COUNT_QUERY = `
     SELECT 
       count(*)
@@ -24,9 +29,9 @@ const PRODUCT_COUNT_QUERY = `
     WHERE
         sc.deleted = 0
     AND (
-          (tv13.value != "" OR tv13.value IS NOT NULL)
+          (tv13.value != "" AND tv13.value IS NOT NULL)
           OR 
-          (tv8.value != "" OR tv8.value IS NOT NULL) 
+          (tv8.value != "" AND tv8.value IS NOT NULL) 
         )
     `;
 const MACHINE_COUNT_QUERY = `
@@ -46,7 +51,7 @@ const MACHINE_COUNT_QUERY = `
     WHERE
         sc.deleted = 0
     AND (
-          (tv8.value != "" OR tv8.value IS NOT NULL) 
+          (tv8.value != "" AND tv8.value IS NOT NULL) 
         )
     `;
 
@@ -67,7 +72,7 @@ const PART_COUNT_QUERY = `
     WHERE
         sc.deleted = 0
     AND (
-          (tv13.value != "" OR tv13.value IS NOT NULL)
+          (tv13.value != "" AND tv13.value IS NOT NULL)
         )
     `;
 
@@ -75,37 +80,69 @@ const SEARCH_FOR_ITEMS_QUERY = `
     SELECT 
         sc.id, 
         sc.pagetitle, 
-        tvcv10.value AS product_setting_value,
-        tvcv13.value AS machine_tags_groups,
-        tvcv8.value AS associated_tags_groups
+        tv10.value AS product_setting_value,
+        tv13.value AS machine_tags_groups,
+        tv8.value AS associated_tags_groups
     FROM 
         site_content sc 
     
     LEFT JOIN 
-        site_tmplvar_contentvalues tvcv13 
+        site_tmplvar_contentvalues tv13 
     ON 
-        tvcv13.tmplvarid = 13 
+        tv13.tmplvarid = 13 
     AND 
-        sc.id = tvcv13.contentid 
+        sc.id = tv13.contentid 
     
     LEFT JOIN
-        site_tmplvar_contentvalues tvcv10
+        site_tmplvar_contentvalues tv10
     ON
-        tvcv10.tmplvarid = 10
+        tv10.tmplvarid = 10
     AND
-        sc.id = tvcv10.contentid
+        sc.id = tv10.contentid
 
     LEFT JOIN
-        site_tmplvar_contentvalues tvcv8
+        site_tmplvar_contentvalues tv8
     ON
-        tvcv8.tmplvarid = 8
+        tv8.tmplvarid = 8
     AND
-        sc.id = tvcv8.contentid
+        sc.id = tv8.contentid
 
     WHERE 
         sc.id = ?
     `;
 const SEARCH_FOR_ITEM_QUERY = SEARCH_FOR_ITEMS_QUERY + ` LIMIT 1`;
+
+const SEARCH_FOR_ITEMS_BY_TAG_QUERY = `
+    SELECT 
+        sc.id, 
+        sc.pagetitle, 
+        sc.uri,
+        sc.published,
+        sc.deleted,
+        tv13.value AS TV13_VALUE,
+        tv8.value AS TV8_VALUE
+    FROM 
+        site_content sc 
+    
+    LEFT JOIN 
+        site_tmplvar_contentvalues tv13 
+    ON 
+        tv13.tmplvarid = 13 
+    AND 
+        sc.id = tv13.contentid 
+
+    LEFT JOIN
+        site_tmplvar_contentvalues tv8
+    ON
+        tv8.tmplvarid = 8
+    AND
+        sc.id = tv8.contentid
+
+    WHERE 
+        tv8.value LIKE ?
+    OR
+        tv13.value LIKE ?
+`;
 
 const ALL_PRODUCTS_QUERY = `
     SELECT 
@@ -149,20 +186,22 @@ const ALL_PRODUCTS_QUERY = `
         sc.deleted = 0
 
     AND (
-          tv13.value != "" OR 
-          tv13.value IS NOT NULL OR 
-          tv8.value != "" OR 
-          tv8.value IS NOT NULL
+          (tv13.value != "" AND 
+          tv13.value IS NOT NULL) 
+        OR 
+          (tv8.value != "" AND 
+          tv8.value IS NOT NULL)
         )
 
     LIMIT 1
     `;
 
 module.exports = {
-  PRODUCT_COUNT_QUERY,
-  PART_COUNT_QUERY,
-  MACHINE_COUNT_QUERY,
-  SEARCH_FOR_ITEMS_QUERY,
-  SEARCH_FOR_ITEM_QUERY,
   ALL_PRODUCTS_QUERY,
+  MACHINE_COUNT_QUERY,
+  PART_COUNT_QUERY,
+  PRODUCT_COUNT_QUERY,
+  SEARCH_FOR_ITEM_QUERY,
+  SEARCH_FOR_ITEMS_BY_TAG_QUERY,
+  SEARCH_FOR_ITEMS_QUERY,
 };

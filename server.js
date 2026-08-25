@@ -18,15 +18,16 @@ const {
 const {
   findMachinesByTagOrGroup,
   findPartsByTagOrGroup,
-  printAllRoutes,
   searchForItemsById,
   searchForItemById,
   makeAllProductsQueryWithLimit,
+  searchForItemsByTag,
 } = require("./queryFunctions.js");
 
 const {
   parseMachineTagsGroups,
   parsePartAssociatedTagsGroups,
+  printAllRoutes,
 } = require("./helpers.js");
 
 // Fix Big Int Bug
@@ -41,13 +42,11 @@ BigInt.prototype.toJSON = function () {
 // Serve your frontend HTML/CSS files from a folder named "public"
 app.use(express.static(path.join(__dirname, "public")));
 
-app.get("/exampleProducts", async (req, res) => {
-  res.json({
-    machineExamples: [9, 18, 23, 24, 27],
-    partExamples: [5253, 31, 34, 35, 38, 39],
-  });
-});
+// machineExamples: [9, 18, 23, 24, 27],
+// partExamples: [5253, 31, 34, 35, 38, 39],
 
+// This gets a count of products, and of machines/parts
+// http://localhost:3000/productCount
 app.get("/productCount", async (req, res) => {
   const connection = await pool.getConnection();
 
@@ -73,8 +72,13 @@ app.get("/productCount", async (req, res) => {
   if (connection) connection.release();
 });
 
+// This gets a product list, you add your own limit
+// http://localhost:3000/products
 app.get("/products", async (req, res) => {
   let { limit } = req.query;
+
+  // prevent SQL injection from query
+  if (!(Number(limit) >= 1)) limit = 1;
 
   let connection;
   try {
@@ -98,8 +102,10 @@ app.get("/products", async (req, res) => {
   }
 });
 
+// This gets EVERYTHING
+// http://localhost:3000/allProducts
 app.get("/allProducts", async (req, res) => {
-  const limit = 100000;
+  const limit = 1000000;
 
   let connection;
   try {
@@ -156,6 +162,7 @@ app.get("/allProducts", async (req, res) => {
 // });
 
 // Make this one only get parts by id
+// Example: http://localhost:3000/part/26
 app.get("/part{/:partId}", async (req, res) => {
   const { partId } = req.params;
 
@@ -205,6 +212,7 @@ app.get("/part{/:partId}", async (req, res) => {
 });
 
 // Make this one only get a machine by id
+// Example: http://localhost:3000/machine/484
 app.get("/machine{/:machineId}", async (req, res) => {
   const { machineId } = req.params;
 
@@ -253,6 +261,51 @@ app.get("/machine{/:machineId}", async (req, res) => {
   }
 });
 
+// You can search for a tag and it'll bring up lists of matching matchines and matching parts
+// Example: http://localhost:3000/productsWithTag/PFA-%3EPFAFF%20Creative%207530
+app.get("/productsWithTag{/:tag}", async (req, res) => {
+  const { tag } = req.params;
+  console.log("tag", tag);
+  if (!tag) {
+    return res.json({
+      error: "needs a tag",
+      example: "/productsWithTag/PFA->PFAFF Creative 7530",
+    });
+  }
+
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const rows = await searchForItemsByTag(tag, connection);
+    console.log(rows);
+    // return res.json(rows);
+    const result = {
+      count: { machines: 0, parts: 0 },
+      machines: [],
+      parts: [],
+    };
+    for (let row of rows) {
+      if (row.TV13_VALUE) {
+        result.parts.push(row);
+      } else if (row.TV8_VALUE) {
+        result.machines.push(row);
+      }
+    }
+    result.count.machines = result.machines.length;
+    result.count.parts = result.parts.length;
+
+    res.json(result);
+  } catch (error) {
+    console.error("Database error details:", error);
+    res
+      .status(500)
+      .json({ error: "Database connection failed", details: error.message });
+  } finally {
+    // 3. ALWAYS release the connection back to the pool, even if it fails
+    if (connection) connection.release();
+  }
+});
+
 // This route is more generic in that it can grab any product plus associated parts/machines
 app.get("/product{/:id}", async (req, res) => {
   const { id } = req.params;
@@ -275,6 +328,8 @@ app.get("/product{/:id}", async (req, res) => {
     let matchingParts = null;
 
     const item = rows[0];
+    if (!item) return res.json({ message: "no part found" });
+    // @#@#@# maybe change the "as X" of this query for consistent labeling
     const isMachine = item.machine_tags_groups !== null;
     const isPart = item.associated_tags_groups !== null;
 
@@ -297,7 +352,7 @@ app.get("/product{/:id}", async (req, res) => {
         item.associated_tags_groups,
       );
 
-      matchingMachines = await findMachinesByTagOrGroup(
+      let matchingMachines = await findMachinesByTagOrGroup(
         tagsAndGroups,
         connection,
       );
