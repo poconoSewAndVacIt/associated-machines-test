@@ -9,6 +9,9 @@ const jsonHelper = require("./jsonHelper");
 const fs = require("fs");
 const { match } = require("assert");
 
+const swaggerUi = require("swagger-ui-express");
+const swaggerDocument = require("./swagger-output.json");
+
 const {
   PRODUCT_COUNT_QUERY,
   MACHINE_COUNT_QUERY,
@@ -44,6 +47,8 @@ app.use(express.static(path.join(__dirname, "public")));
 
 // machineExamples: [9, 18, 23, 24, 27],
 // partExamples: [5253, 31, 34, 35, 38, 39],
+
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 // This gets a count of products, and of machines/parts
 // http://localhost:3000/productCount
@@ -163,11 +168,11 @@ app.get("/allProducts", async (req, res) => {
 
 // Make this one only get parts by id
 // Example: http://localhost:3000/part/26
-app.get("/part{/:partId}", async (req, res) => {
+app.get("/part/:partId", async (req, res) => {
   const { partId } = req.params;
 
   // Guard against incorrect url's
-  if (!(partId >= 0))
+  if (!(Number(partId) >= 0))
     return res.json({ error: "needs a partId", example: "/part/26" });
 
   let connection;
@@ -179,7 +184,8 @@ app.get("/part{/:partId}", async (req, res) => {
     SELECT 
         sc.id,
         sc.pagetitle, sc.longtitle, sc.description, sc.alias, sc.introtext, sc.content, sc.createdon, sc.editedon, sc.deleted, sc.publishedon, sc.published, sc.uri, sc.properties,
-        tv8.value as TV8_VALUE
+        tv8.value as TV8_VALUE,
+        tv13.value as TV13_VALUE
         
     FROM 
         site_content as sc
@@ -190,9 +196,20 @@ app.get("/part{/:partId}", async (req, res) => {
         tv8.tmplvarid = 8
     and
         sc.id = tv8.contentid
+
+    LEFT JOIN
+        site_tmplvar_contentvalues as tv13
+    ON
+        tv13.tmplvarid = 13
+    and
+        sc.id = tv13.contentid
     
     WHERE
         sc.id = ?
+    AND
+        tv8.value IS NOT NULL
+    AND
+        tv8.value != ''
 
     LIMIT 1
     `,
@@ -213,11 +230,11 @@ app.get("/part{/:partId}", async (req, res) => {
 
 // Make this one only get a machine by id
 // Example: http://localhost:3000/machine/484
-app.get("/machine{/:machineId}", async (req, res) => {
+app.get("/machine/:machineId", async (req, res) => {
   const { machineId } = req.params;
 
   // Guard against incorrect url's
-  if (!(machineId >= 0))
+  if (!(Number(machineId) >= 0))
     return res.json({ error: "needs a machineId", example: "/machine/9" });
 
   let connection;
@@ -229,10 +246,18 @@ app.get("/machine{/:machineId}", async (req, res) => {
     SELECT 
         sc.id,
         sc.pagetitle, sc.longtitle, sc.description, sc.alias, sc.introtext, sc.content, sc.createdon, sc.editedon, sc.deleted, sc.publishedon, sc.published, sc.uri, sc.properties,
+        tv8.value as TV8_VALUE,
         tv13.value as TV13_VALUE
         
     FROM 
         site_content as sc
+
+    LEFT JOIN
+        site_tmplvar_contentvalues as tv8
+    ON
+        tv8.tmplvarid = 8
+    and
+        sc.id = tv8.contentid
 
     LEFT JOIN
         site_tmplvar_contentvalues as tv13
@@ -243,6 +268,10 @@ app.get("/machine{/:machineId}", async (req, res) => {
     
     WHERE
         sc.id = ?
+    AND
+        tv13.value IS NOT NULL
+    AND
+        tv13.value != ''
 
     LIMIT 1
     `,
@@ -263,7 +292,7 @@ app.get("/machine{/:machineId}", async (req, res) => {
 
 // You can search for a tag and it'll bring up lists of matching matchines and matching parts
 // Example: http://localhost:3000/productsWithTag/PFA-%3EPFAFF%20Creative%207530
-app.get("/productsWithTag{/:tag}", async (req, res) => {
+app.get("/productsWithTag/:tag", async (req, res) => {
   const { tag } = req.params;
   console.log("tag", tag);
   if (!tag) {
@@ -307,11 +336,11 @@ app.get("/productsWithTag{/:tag}", async (req, res) => {
 });
 
 // This route is more generic in that it can grab any product plus associated parts/machines
-app.get("/product{/:id}", async (req, res) => {
+app.get("/product/:id", async (req, res) => {
   const { id } = req.params;
 
   // Guard against incorrect url's
-  if (!(id >= 0))
+  if (!(Number(id) >= 0))
     return res.json({
       error: "needs a product id",
       example: "/product/18",
