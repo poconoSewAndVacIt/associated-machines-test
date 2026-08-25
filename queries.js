@@ -160,8 +160,8 @@ const ALL_PRODUCTS_QUERY = `
         sc.properties,
         sc.uri,
         sc.parent,
-        tv13.value as TV13_VALUE,
-        tv8.value as TV8_VALUE
+        tv8.value as TV8_VALUE,
+        tv13.value as TV13_VALUE
         
     FROM 
         site_content as sc

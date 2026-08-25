@@ -35,9 +35,9 @@ async function run() {
 
   for (let item of data) {
     if (item.TV13_VALUE) {
-      parts.push(item);
-    } else if (item.TV8_VALUE) {
       machines.push(item);
+    } else if (item.TV8_VALUE) {
+      parts.push(item);
     } else {
       other.push(item);
     }
@@ -50,7 +50,7 @@ async function run() {
 
   for (let m of machines) {
     // console.log(m);
-    const tags = parseMachineTagsGroups(m.TV8_VALUE);
+    const tags = parseMachineTagsGroups(m.TV13_VALUE);
     for (let tag of tags) {
       machineTagCount++;
       machineTagSet.add(tag);
@@ -63,7 +63,7 @@ async function run() {
 
   for (let p of parts) {
     // console.log(p);
-    const tags = parseMachineTagsGroups(p.TV13_VALUE);
+    const tags = parseMachineTagsGroups(p.TV8_VALUE);
     for (let tag of tags) {
       partTagCount++;
       partTagSet.add(tag);
