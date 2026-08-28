@@ -119,17 +119,10 @@ const SEARCH_FOR_ITEMS_BY_TAG_QUERY = `
         sc.uri,
         sc.published,
         sc.deleted,
-        tv13.value AS TV13_VALUE,
-        tv8.value AS TV8_VALUE
+        tv8.value AS TV8_VALUE,
+        tv13.value AS TV13_VALUE
     FROM 
         site_content sc 
-    
-    LEFT JOIN 
-        site_tmplvar_contentvalues tv13 
-    ON 
-        tv13.tmplvarid = 13 
-    AND 
-        sc.id = tv13.contentid 
 
     LEFT JOIN
         site_tmplvar_contentvalues tv8
@@ -137,6 +130,13 @@ const SEARCH_FOR_ITEMS_BY_TAG_QUERY = `
         tv8.tmplvarid = 8
     AND
         sc.id = tv8.contentid
+    
+    LEFT JOIN 
+        site_tmplvar_contentvalues tv13 
+    ON 
+        tv13.tmplvarid = 13 
+    AND 
+        sc.id = tv13.contentid 
 
     WHERE 
         tv8.value LIKE ?

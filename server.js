@@ -50,6 +50,23 @@ app.use(express.static(path.join(__dirname, "public")));
 
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
+app.get("/", (req, res) => {
+  res.json({
+    message: "example routes",
+    productCount: "/productCount",
+    products: ["/products?limit=1", "/products?limit=5", "/products?limit=100"],
+    "allProducts (this is a BIG one)": "/allProducts",
+    "part/:partId": ["/part/28", "/part/35"],
+    "machine/:machineId": ["/machine/8613", "/machine/5653"],
+    "productsWithTag/:tag": [
+      "/productsWithTag/GROUP-Brother-Embroidery-Machines",
+      "/productsWithTag/GROUP-BRO-PSV-E",
+      "/productsWithTag/GROUP-Thread-Embroidery",
+    ],
+    "product/:id": [],
+  });
+});
+
 // This gets a count of products, and of machines/parts
 // http://localhost:3000/productCount
 app.get("/productCount", async (req, res) => {
@@ -307,23 +324,25 @@ app.get("/productsWithTag/:tag", async (req, res) => {
     connection = await pool.getConnection();
     const rows = await searchForItemsByTag(tag, connection);
     console.log(rows);
-    // return res.json(rows);
-    const result = {
-      count: { machines: 0, parts: 0 },
-      machines: [],
-      parts: [],
-    };
-    for (let row of rows) {
-      if (row.TV8_VALUE) {
-        result.parts.push(row);
-      } else if (row.TV13_VALUE) {
-        result.machines.push(row);
-      }
-    }
-    result.count.machines = result.machines.length;
-    result.count.parts = result.parts.length;
 
-    res.json(result);
+    function createResultJson(rows) {
+      const result = {
+        count: { machines: 0, parts: 0 },
+        machines: [],
+        parts: [],
+      };
+      for (let row of rows) {
+        if (row.TV8_VALUE) {
+          result.parts.push(row);
+        } else if (row.TV13_VALUE) {
+          result.machines.push(row);
+        }
+      }
+      result.count.parts = result.parts.length;
+      result.count.machines = result.machines.length;
+    }
+
+    res.json(createResultJson(rows));
   } catch (error) {
     console.error("Database error details:", error);
     res
