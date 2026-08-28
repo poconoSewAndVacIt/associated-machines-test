@@ -6,6 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "npm run swagger && node --watch server.js",
+    "dev2": "npm run swagger && node --watch testDbProductTagAssociations/server.js",
     "swagger": "node swagger.js"
   },
   "repository": {

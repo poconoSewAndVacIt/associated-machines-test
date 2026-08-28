@@ -314,9 +314,9 @@ app.get("/productsWithTag/:tag", async (req, res) => {
       parts: [],
     };
     for (let row of rows) {
-      if (row.TV13_VALUE) {
+      if (row.TV8_VALUE) {
         result.parts.push(row);
-      } else if (row.TV8_VALUE) {
+      } else if (row.TV13_VALUE) {
         result.machines.push(row);
       }
     }
